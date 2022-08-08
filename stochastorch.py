@@ -1,3 +1,7 @@
+"""
+This code was written by Nestor Demeure and is licensed under the Apache 2.0 license.
+You can find an up-to-date source and full description here: https://github.com/nestordemeure/stochastorch
+"""
 import torch
 
 def computeError(x, y, result):

@@ -1,4 +1,4 @@
-# StochasTorch
+# StochasTorch: a Pytorch implementation of stochastic addition
 
 This repository contains a Pytorch software implementation of stochastic addition.
 
@@ -58,5 +58,22 @@ The random number generation is done using a hashing function ([Dietzfelbinger's
 
 ## Potential improvements:
 
-- One could reduce the memory usage of the operations by using more in-place operations,
-- one could improve the performance of this code by implementing it as a C++/CUDA kernel.
+- one could reduce the memory usage of the operations by using more in-place operations,
+- one could improve the performance of this code by implementing it as a C++/CUDA kernel,
+
+Do not hesitate to submit an issue or a pull request if you need added functionalities for your needs!
+
+## Crediting this work
+
+Please use this reference if you use Stochastorch within a published work:
+
+```bibtex
+@misc{StochasTorch,
+  author = {Nestor, Demeure},
+  title = {StochasTorch: a Pytorch implementation of stochastic addition},
+  year = {2022},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/nestordemeure/stochastorch}}
+}
+```
