@@ -6,7 +6,7 @@ When encoding the weights of a neural network in low precision (such as `bfloat1
 This leads to weights becoming stuck and the model's accuracy being significantly reduced.
 
 Stochastic arithmetic lets you perform the addition in such a way that the weights have a non-zero probability of being modified anyway.
-This avoids the stagnation problem without increasing the memory usage (as might happen if one were using a [compensated summation](https://github.com/nestordemeure/pairArithmetic) to solve the problem).
+This avoids the stagnation problem (see [figure 4 of "Revisiting BFloat16 Training"](https://arxiv.org/abs/2010.06192)) without increasing the memory usage (as might happen if one were using a [compensated summation](https://github.com/nestordemeure/pairArithmetic) to solve the problem).
 
 The downside is that software-based stochastic arithmetic is significantly slower than a normal floating-point addition.
 It is thus viable for the weight update but would not be appropriate in a hot loop.
