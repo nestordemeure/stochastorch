@@ -13,7 +13,7 @@ It is thus viable for the weight update but would not be appropriate in a hot lo
 
 ## Usage
 
-This repository gives you a `StochasticAdder` type. Once you initialize it with the floating point precision you will be using (this code should be valid for all floating-point types used in Pytorch) and, optionally, a seed (to ensure reproducibility), you can use its `add` and `add_biased` functions to perform stochastic additions on Pytorch tensors:
+This repository gives you a `StochasticAdder` type. Once you initialize it with the floating point precision you will be using (this code should be valid for all floating-point types used in Pytorch) and, optionally, a seed (to ensure reproducibility), you can use its `add` or `add_biased` function to perform stochastic additions on Pytorch tensors:
 
 ```python
 import torch

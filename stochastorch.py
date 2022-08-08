@@ -93,7 +93,7 @@ class StochasticAdder:
         # generates a hash
         result_raw = (self.seed * inputsHash)
         # returns result as a float in [0;maxfloat]
-        result = result_raw.abs().type(self.float_type) / self.max_int
+        result = result_raw.type(self.float_type).abs() / self.max_int
         return result
 
     def _pseudorandom_bool_biased(self, x, y, addition, alternative_addition, error):
