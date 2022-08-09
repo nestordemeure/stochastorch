@@ -79,3 +79,5 @@ Please use this reference if you use Stochastorch within a published work:
   howpublished = {\url{https://github.com/nestordemeure/stochastorch}}
 }
 ```
+
+You will find a JAX implementation called Jochastic [here](https://github.com/nestordemeure/jochastic).
