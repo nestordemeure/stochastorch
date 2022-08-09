@@ -129,7 +129,7 @@ class StochasticAdder:
         error = computeError(x, y, result)
         alternativeResult = self._misroundedAddition(result, error)
         # picks the result to be returned
-        # NOTE: we do not deal with the error==0. case as it is uncommon
+        # NOTE: we do not deal with the error==0 case as it is too uncommon to bias the results significantly
         useResult = self._pseudorandom_bool(x, y)
         return torch.where(useResult, result, alternativeResult)
     
