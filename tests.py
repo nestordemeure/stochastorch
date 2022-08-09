@@ -20,7 +20,7 @@ assert(torch.all(error == error_high))
 
 # take a look at the alternative result
 adder = StochasticAdder(dtype)
-alternativeResult = adder._misroundedAddition(x, y, result, error)
+alternativeResult = adder._misroundedAddition(result, error)
 print(f"alternative: {alternativeResult})")
 print(f"difference: {result - alternativeResult}")
 
