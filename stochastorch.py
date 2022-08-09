@@ -107,7 +107,7 @@ class StochasticAdder:
         result = random_float * ulp > error.abs()
         return result
 
-    def _misroundedAddition(self, x, y, result, error):
+    def _misroundedAddition(self, result, error):
         """
         Given x + y = result (where result has been rounded to the closest representable number in the floating-point precision used)
         and error the numerical error of that addition
@@ -127,7 +127,7 @@ class StochasticAdder:
         # does the addition
         result = x + y
         error = computeError(x, y, result)
-        alternativeResult = self._misroundedAddition(x, y, result, error)
+        alternativeResult = self._misroundedAddition(result, error)
         # picks the result to be returned
         useResult = self._pseudorandom_bool(x, y)
         return torch.where(useResult, result, alternativeResult)
