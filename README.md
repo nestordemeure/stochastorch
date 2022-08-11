@@ -52,7 +52,7 @@ print(f"difference: {difference}")
 ```
 
 Both functions take an optional `is_biased` boolean parameter.
-If `is_biased` is `True`, the random number generator is biased according to the relative error of the operation
+If `is_biased` is `True` (the default value), the random number generator is biased according to the relative error of the operation
 else, it will round up half of the time on average.
 
 When using low precision (16 bits floating-point arithmetic or less), we *strongly* recommend using the `stochastorch.addcdiv` function when possible as it is significantly more accurate (note that Pytorch [increase the precision locally to 32 bits](https://github.com/pytorch/pytorch/blob/12382f0a38f8199bc74aee701465e847f368e6de/aten/src/ATen/native/cuda/PointwiseOpsKernel.cu?fbclid=IwAR0SdS6mVAGN0TB_TAdKt0WVWWjxiBkmP6Inj9lYH8oB68wjsbQzinlH-xY#L92) when computing `addcdiv` on 16-bits floating point numbers).
