@@ -13,7 +13,7 @@ It is thus viable for things like the weight update but would not be appropriate
 
 ## Usage
 
-This repository introduces the `add` (`x+y`), `add_highprecision` and `addcdiv` (`x + epsilon*t1/t2`) operations.
+This repository introduces the `add` (`x+y`) and `addcdiv` (`x + epsilon*t1/t2`) operations.
 They act similarly to their PyTorch counterparts but round the result up or down randomly:
 
 ```python
@@ -52,21 +52,21 @@ print(f"difference: {difference}")
 ```
 
 Both functions take an optional `is_biased` boolean parameter.
-If is_biased is True, the random number generator is biased according to the relative error of the operation
+If `is_biased` is `True`, the random number generator is biased according to the relative error of the operation
 else, it will round up half of the time on average.
 
-When using low precision (16 bits floating-point arithmetic or less), we *strongly* recommend using the `stochastorch.addcdiv` function when possible as it is significantly more accurate (note that Pytorch also [increase the precision locally to 32 bits](https://github.com/pytorch/pytorch/blob/12382f0a38f8199bc74aee701465e847f368e6de/aten/src/ATen/native/cuda/PointwiseOpsKernel.cu?fbclid=IwAR0SdS6mVAGN0TB_TAdKt0WVWWjxiBkmP6Inj9lYH8oB68wjsbQzinlH-xY#L92) when computing `addcdiv`).
+When using low precision (16 bits floating-point arithmetic or less), we *strongly* recommend using the `stochastorch.addcdiv` function when possible as it is significantly more accurate (note that Pytorch [increase the precision locally to 32 bits](https://github.com/pytorch/pytorch/blob/12382f0a38f8199bc74aee701465e847f368e6de/aten/src/ATen/native/cuda/PointwiseOpsKernel.cu?fbclid=IwAR0SdS6mVAGN0TB_TAdKt0WVWWjxiBkmP6Inj9lYH8oB68wjsbQzinlH-xY#L92) when computing `addcdiv` on 16-bits floating point numbers).
 
 Otherwise, it is often beneficial to use higher precision locally *then* cast down to 16 bits at summing / storage time.
 `add` deals with it automatically when its second input is higher precision than the first.
 
 ## Implementation details
 
-We use `TwoSum` to measure the numerical error done by an addition, our tests show that it behaves as needed on `bfloat16` (some edge cases might be invalid, leading to an inexact computation of the numerical error but, it is reliable enough for our purpose) and higher floating-point precisions.
+We use `TwoSum` to measure the numerical error done by the addition, our tests show that it behaves as needed on `bfloat16` (some edge cases might be invalid, leading to an inexact computation of the numerical error but, it is reliable enough for our purpose) and higher precisions floating-point types.
 
 This and the [`nextafter`](https://pytorch.org/docs/stable/generated/torch.nextafter.html) function let us emulate various rounding modes in software (this is inspired by [Verrou's backend](https://github.com/edf-hpc/verrou)).
 
-## Potential improvements:
+## Potential improvements
 
 - one could implement more operations,
 - one could reduce the memory usage of the operations by using more in-place operations,
@@ -76,7 +76,7 @@ Do not hesitate to submit an issue or a pull request if you need added functiona
 
 ## Crediting this work
 
-Please use this reference if you use Stochastorch within a published work:
+You can use this BibTeX reference if you use StochasTorch within a published work:
 
 ```bibtex
 @misc{StochasTorch,

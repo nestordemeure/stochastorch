@@ -26,21 +26,6 @@ def _computeError(x, y, result):
     error_x = x - x2
     return error_x + error_y
 
-def _computeErrorX(x, result):
-    """
-    Computes the error introduced during a floating point addition (x+?=result) using the fastTwoSum error-free transformation.
-    In infinite precision (associative maths) this function should return 0.
-
-    WARNING: 
-    - the order of the operations *matters*, do not change this operation in a way that would alter the order of operations
-    - requires rounding to nearest (the default on modern processors) and assumes that floating points follow the IEEE-754 norm
-      (but, it has been tested with alternative types such as bfloat16)
-    """
-    y2 = result - x
-    x2 = result - y2
-    error_x = x - x2
-    return error_x
-
 def _misroundResult(result, error):
     """
     Given the result of a floating point operation and the numerical error introduced during that operation
@@ -122,9 +107,9 @@ def add(x, y, is_biased=True):
     useResult = _pseudorandomBool(result, alternativeResult, error, is_biased)
     return torch.where(useResult, result, alternativeResult)
 
-def addcdiv(input, tensor1, tensor2, value=1, is_biased=True):
+def addcdiv(x, tensor1, tensor2, value=1, is_biased=True):
     """
-    Computes input + (tensor1/tensor2)*value pseudorandomly rounding the addition up or down to the nearest representable floating-point number.
+    Computes x + (tensor1/tensor2)*value pseudorandomly rounding the addition up or down to the nearest representable floating-point number.
     In 16-bits or less, this operation is *significantly* more precise than doing the operations separetely.
 
     If is_biased is True, the random number generator is biased according to the relative error of the addition
@@ -132,12 +117,16 @@ def addcdiv(input, tensor1, tensor2, value=1, is_biased=True):
     """
     # insures the input types are coherent
     assert(tensor1.dtype == tensor2.dtype)
-    assert(input.dtype == tensor1.dtype)
+    assert(x.dtype == tensor1.dtype)
     # does the addcdiv
     # we NEED the inplace version as it uses higher precision internally
-    result = input.clone().detach()
+    result = x.clone().detach()
     result.addcdiv_(tensor1, tensor2, value=value)
-    error = _computeErrorX(input, result)
+    # computes the numerical error
+    # NOTE we might want to compute y in high precision *then* compute result for improved performance
+    y = torch.zeros_like(x, dtype=x.dtype, device=x.device)
+    y.addcdiv_(tensor1, tensor2, value=value)
+    error = _computeError(x, y, result)
     # picks the result to be returned
     alternativeResult = _misroundResult(result, error)
     useResult = _pseudorandomBool(result, alternativeResult, error, is_biased)
