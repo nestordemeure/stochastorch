@@ -44,7 +44,7 @@ def _pseudorandomBool(result, alternative_result, error, is_biased=True):
     Takes  the result of a floating point operation, 
     the floating point number on the other side of the interval containing the analytical result of the operation
     and the numerical error introduced during that operation
-    returns a boolean.
+    returns a randomly generated boolean.
 
     If is_biased is True, the random number generator is biased according to the relative error of the operation
     else, it will round up 50% of the time and down the other 50%.
@@ -69,8 +69,10 @@ def add_highprecision(x, y_high_precision, is_biased=True):
     If is_biased is True, the random number generator is biased according to the relative error of the addition
     else, it will round up 50% of the time and down the other 50%.
     """
+    # insures the input types are properly sized
     dtype_low_precision = x.dtype
     dtype_high_precision = y_high_precision.dtype
+    assert(torch.finfo(dtype_low_precision).bits < torch.finfo(dtype_high_precision).bits)
     # performs the addition
     result_high_precision = x.to(dtype_high_precision) + y_high_precision
     result = result_high_precision.to(dtype_low_precision)
@@ -93,9 +95,7 @@ def add(x, y, is_biased=True):
     else, it will round up 50% of the time and down the other 50%.
     """
     # use a specialized function if y is higher precision than x
-    bits_x = torch.finfo(x.dtype).bits
-    bits_y = torch.finfo(y.dtype).bits
-    if (bits_y > bits_x):
+    if (torch.finfo(y.dtype).bits > torch.finfo(x.dtype).bits):
         return add_highprecision(x, y, is_biased)
     # otherwise insures the input types are coherent
     assert(x.dtype == y.dtype)
