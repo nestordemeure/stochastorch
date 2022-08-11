@@ -79,7 +79,7 @@ class StochasticAdder:
         inputsHash = torch.bitwise_xor(x.view(self.int_type), y.view(self.int_type))
         # generates a hash and extracts a single bit
         # due to using signed integers, we will get a tensor of 0 and -1
-        result = (self.seed * inputsHash) >> self.shift
+        result = (self.seed.to(x.device) * inputsHash) >> self.shift
         # returns result as a boolean
         return result.bool()
 
@@ -91,7 +91,7 @@ class StochasticAdder:
         # xor inputs
         inputsHash = torch.bitwise_xor(x.view(self.int_type), y.view(self.int_type))
         # generates a hash
-        result_raw = (self.seed * inputsHash)
+        result_raw = (self.seed.to(x.device) * inputsHash)
         # returns result as a float in [0;maxfloat]
         result = result_raw.abs().type(self.float_type) / self.max_int
         return result
@@ -113,7 +113,7 @@ class StochasticAdder:
         and error the numerical error of that addition
         returns result2 which is the closest floating point number on the opposite side of (x+y)
         """
-        direction = torch.where(error > 0, self.float_max, self.float_min)
+        direction = torch.where(error > 0, self.float_max.to(error.device), self.float_min.to(error.device))
         return torch.nextafter(result, direction)
 
     def add(self, x, y):
