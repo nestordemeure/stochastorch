@@ -1,158 +1,144 @@
 """
+Stochastically rounded operations between Pytorch tensors.
+
 This code was written by Nestor Demeure and is licensed under the Apache 2.0 license.
 You can find an up-to-date source and full description here: https://github.com/nestordemeure/stochastorch
 """
 import torch
 
-def computeError(x, y, result):
+#----------------------------------------------------------------------------------------
+# BUILDING BLOCKS
+
+def _computeError(x, y, result):
     """
-    Computes the error introduced during a floating point addition using the TwoSum error-free transformation
+    Computes the error introduced during a floating point addition (x+y=result) using the TwoSum error-free transformation.
     In infinite precision (associative maths) this function should return 0.
+
     WARNING: 
     - the order of the operations *matters*, do not change this operation in a way that would alter the order of operations
-    - requires rounding to nearest (the default on modern processors) and assumes that floating points follow the IEEE-754 norm
+    - requires rounding to nearest (the default on modern processors) and assumes that floating points follow the IEEE-754 norm 
+      (but, it has been tested with alternative types such as bfloat16)
     """
+    # NOTE: computing this quantity via a cast to higher precision would be faster for low precisions
     y2 = result - x
     x2 = result - y2
     error_y = y - y2
     error_x = x - x2
     return error_x + error_y
 
-def computeError_highPrecision(x, y, result):
+def _computeErrorX(x, result):
     """
-    Computes the error introduced during a floating point addition using the TwoSum error-free transformation
-    In 64bits and more precision, this function returns 0.
-    NOTE: 
-    This function goes back to 64bits in order to compute the error. It is expensive but should only be used to validate `computeError`.
+    Computes the error introduced during a floating point addition (x+?=result) using the fastTwoSum error-free transformation.
+    In infinite precision (associative maths) this function should return 0.
+
+    WARNING: 
+    - the order of the operations *matters*, do not change this operation in a way that would alter the order of operations
+    - requires rounding to nearest (the default on modern processors) and assumes that floating points follow the IEEE-754 norm
+      (but, it has been tested with alternative types such as bfloat16)
     """
-    start_type = result.dtype
-    if torch.finfo(start_type).bits >= 64:
-        raise RuntimeError("compute_highPrecision: we have no precision higher than 64bits available.")
-    end_type = torch.float64
-    better_result = x.type(end_type) + y.type(end_type)
-    error = (better_result - result).type(start_type)
-    return error
+    y2 = result - x
+    x2 = result - y2
+    error_x = x - x2
+    return error_x
 
-class StochasticAdder:
+def _misroundResult(result, error):
     """
-    Does stochastic additions between tensors of a given floating-point type.
+    Given the result of a floating point operation and the numerical error introduced during that operation
+    returns the floating point number on the other side of the interval containing the analytical result of the operation.
+
+    NOTE: the output of this function will be of the type of result, the type of error does not matter.
     """
-    def __init__(self, float_type, seed=None):
-        """
-        Set up the random number generator given the `torch.dtype` of the floats that will be summed.
-        You can pass it a seed (single number), otherwise we will generate one using `torch.randint`
-        """
-        self.float_type = float_type
-        # gets some information on the float type
-        finfo = torch.finfo(float_type)
-        self.bits = finfo.bits
-        # needs to use tensor to insure that our number will be stored in the appropriate type
-        self.float_max = torch.tensor([finfo.max], dtype=float_type)
-        self.float_min = torch.tensor([finfo.min], dtype=float_type)
-        # finds an integer type that is bit compatible with the float type
-        if self.bits == 16:
-            self.int_type = torch.int16
-        elif self.bits == 32:
-            self.int_type = torch.int32
-        elif self.bits == 64:
-            self.int_type = torch.int64 
-        else:
-            raise RuntimeError(f"StochasticAdder: '{float_type}' has an unsupported floating-point size ({self.bits}), please use a 16, 32 or 64 bits floating-point type.")
-        self.max_int = torch.iinfo(self.int_type).max
-        # generates a seed
-        # making sure it is positive and odd
-        if seed is None:
-            self.seed = torch.randint(low=0, high=self.max_int, size=(1,), dtype=self.int_type) | 1
-        else:
-            seed = torch.tensor([seed], dtype=self.int_type)
-            self.seed = torch.abs(seed) | 1
-        # the shift that will be used to convert an integer type into a single bit
-        self.shift = self.bits - 1
+    finfo = torch.finfo(result.dtype)
+    float_max = torch.tensor([finfo.max], dtype=result.dtype, device=result.device)
+    float_min = torch.tensor([finfo.min], dtype=result.dtype, device=result.device)
+    direction = torch.where(error > 0, float_max, float_min)
+    return torch.nextafter(result, direction)
 
-    def _pseudorandom_bool(self, x, y):
-        """
-        Takes two floating point inputs and returns a boolean generated pseudorandomly (deterministically) from those values
-        uses Dietzfelbinger's multiply shift hash function
-        see `High Speed Hashing for Integers and Strings` (https://arxiv.org/abs/1504.06804)
-        """
-        # xor inputs
-        inputsHash = torch.bitwise_xor(x.view(self.int_type), y.view(self.int_type))
-        # generates a hash and extracts a single bit
-        # due to using signed integers, we will get a tensor of 0 and -1
-        result = (self.seed.to(x.device) * inputsHash) >> self.shift
-        # returns result as a boolean
-        return result.bool()
+def _pseudorandomBool(result, alternative_result, error, is_biased=True):
+    """
+    Takes  the result of a floating point operation, 
+    the floating point number on the other side of the interval containing the analytical result of the operation
+    and the numerical error introduced during that operation
+    returns a boolean.
 
-    def _pseudorandom_float(self, x, y):
-        """
-        Takes two floating point inputs and return a float in [0;1] generated pseudorandomly (deterministically) from those values
-        uses a simplification of Dietzfelbinger's multiply shift hash function
-        """
-        # xor inputs
-        inputsHash = torch.bitwise_xor(x.view(self.int_type), y.view(self.int_type))
-        # generates a hash
-        result_raw = (self.seed.to(x.device) * inputsHash)
-        # returns result as a float in [0;maxfloat]
-        result = result_raw.abs().type(self.float_type) / self.max_int
-        return result
-
-    def _pseudorandom_bool_biased(self, x, y, addition, alternative_addition, error):
-        """
-        Takes two floating point inputs (x,y), their sum (addition), misrounded sum (alternative_addition) and the numerical error of their sum (error)
-        returns a boolean generated pseudorandomly (deterministically) from those values
-        the random number generator is biased according to the relative error of the addition.
-        """
-        random_float = self._pseudorandom_float(x,y)
-        ulp = (alternative_addition - addition).abs()
+    If is_biased is True, the random number generator is biased according to the relative error of the operation
+    else, it will round up 50% of the time and down the other 50%.
+    """
+    if is_biased:
+        ulp = (alternative_result - result).abs()
+        random_float = torch.rand(size=ulp.shape, device=ulp.device, dtype=ulp.dtype)
         result = random_float * ulp > error.abs()
-        return result
-
-    def _misroundedAddition(self, result, error):
-        """
-        Given x + y = result (where result has been rounded to the closest representable number in the floating-point precision used)
-        and error the numerical error of that addition
-        returns result2 which is the closest floating point number on the opposite side of (x+y)
-        """
-        direction = torch.where(error > 0, self.float_max.to(error.device), self.float_min.to(error.device))
-        return torch.nextafter(result, direction)
-
-    def add(self, x, y):
-        """
-        Returns the sum of two tensors x and y pseudorandomly rounded to the nearest representable floating-point number up or down.
-        Will round up 50% of the time and down the other 50%.
-        """
-        # insures the input types are correct
-        self.check_type(x)
-        self.check_type(y)
-        # does the addition
-        result = x + y
-        error = computeError(x, y, result)
-        alternativeResult = self._misroundedAddition(result, error)
-        # picks the result to be returned
+    else:
         # NOTE: we do not deal with the error==0 case as it is too uncommon to bias the results significantly
-        useResult = self._pseudorandom_bool(x, y)
-        return torch.where(useResult, result, alternativeResult)
-    
-    def add_biased(self, x, y):
-        """
-        Returns the sum of two tensors x and y pseudorandomly rounded to the nearest representable floating-point number up or down.
-        The random number generator is biased according to the relative error of the addition.
-        NOTE: this function is has better numerical properties than `add` but it is slower.
-        """
-        # insures the input types are correct
-        self.check_type(x)
-        self.check_type(y)
-        # does the addition
-        result = x + y
-        error = computeError(x, y, result)
-        alternativeResult = self._misroundedAddition(result, error)
-        # picks the result to be returned
-        useResult = self._pseudorandom_bool_biased(x, y, result, alternativeResult, error)
-        return torch.where(useResult, result, alternativeResult)
+        result = torch.rand(size=result.shape, dtype=result.dtype, device=result.device) < 0.5
+    return result
 
-    def check_type(self, data):
-        """
-        Errors-out if the data if not of the type that was passed to the constructor of this StochasticAdder.
-        """
-        if data.dtype != self.float_type:
-            raise RuntimeError(f"StochasticAdder: got a tensor of type '{data.dtype}', expected type '{self.float_type}'")
+#----------------------------------------------------------------------------------------
+# OPERATIONS
+
+def add_highprecision(x, y_high_precision, is_biased=True):
+    """
+    Returns the sum of two tensors x and y_high_precision pseudorandomly rounded up or down to the nearest representable floating-point number.
+    y_high_precision is assumed to be in a floating-point precision strictly higher than x.
+
+    If is_biased is True, the random number generator is biased according to the relative error of the addition
+    else, it will round up 50% of the time and down the other 50%.
+    """
+    dtype_low_precision = x.dtype
+    dtype_high_precision = y_high_precision.dtype
+    # performs the addition
+    result_high_precision = x.to(dtype_high_precision) + y_high_precision
+    result = result_high_precision.to(dtype_low_precision)
+    # computes the numerical error
+    result_rounded = result.to(dtype_high_precision)
+    error = result_high_precision - result_rounded
+    # picks the result to be returned
+    alternativeResult = _misroundResult(result, error)
+    useResult = _pseudorandomBool(result, alternativeResult, error, is_biased)
+    return torch.where(useResult, result, alternativeResult)
+
+def add(x, y, is_biased=True):
+    """
+    Returns the sum of two tensors x and y pseudorandomly rounded up or down to the nearest representable floating-point number.
+
+    This function will delegate to `add_highprecision` if y is higher precision than x.
+    It will then return a result of the sane precision as x.
+
+    If is_biased is True, the random number generator is biased according to the relative error of the addition
+    else, it will round up 50% of the time and down the other 50%.
+    """
+    # use a specialized function if y is higher precision than x
+    bits_x = torch.finfo(x.dtype).bits
+    bits_y = torch.finfo(y.dtype).bits
+    if (bits_y > bits_x):
+        return add_highprecision(x, y, is_biased)
+    # otherwise insures the input types are coherent
+    assert(x.dtype == y.dtype)
+    # does the addition
+    result = x + y
+    error = _computeError(x, y, result)
+    # picks the result to be returned
+    alternativeResult = _misroundResult(result, error)
+    useResult = _pseudorandomBool(result, alternativeResult, error, is_biased)
+    return torch.where(useResult, result, alternativeResult)
+
+def addcdiv(input, tensor1, tensor2, value=1, is_biased=True):
+    """
+    Computes input + (tensor1/tensor2)*value pseudorandomly rounding the addition up or down to the nearest representable floating-point number.
+    In 16-bits or less, this operation is *significantly* more precise than doing the operations separetely.
+
+    If is_biased is True, the random number generator is biased according to the relative error of the addition
+    else, it will round up 50% of the time and down the other 50%.
+    """
+    # insures the input types are coherent
+    assert(tensor1.dtype == tensor2.dtype)
+    assert(input.dtype == tensor1.dtype)
+    # does the addcdiv
+    # we NEED the inplace version as it uses higher precision internally
+    result = input.clone().detach()
+    result.addcdiv_(tensor1, tensor2, value=value)
+    error = _computeErrorX(input, result)
+    # picks the result to be returned
+    alternativeResult = _misroundResult(result, error)
+    useResult = _pseudorandomBool(result, alternativeResult, error, is_biased)
+    return torch.where(useResult, result, alternativeResult)

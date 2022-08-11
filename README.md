@@ -1,6 +1,6 @@
-# StochasTorch: a Pytorch implementation of stochastic addition
+# StochasTorch: stochastically rounded operations between Pytorch tensors.
 
-This repository contains a Pytorch software-based implementation of [stochastic rounding](https://nhigham.com/2020/07/07/what-is-stochastic-rounding/) addition.
+This repository contains a Pytorch software-based implementation of some [stochastically rounded operations](https://nhigham.com/2020/07/07/what-is-stochastic-rounding/).
 
 When encoding the weights of a neural network in low precision (such as `bfloat16`), one runs into stagnation problems: updates end up being too small relative to the numbers the precision of the encoding.
 This leads to weights becoming stuck and the model's accuracy being significantly reduced.
@@ -9,22 +9,20 @@ Stochastic arithmetic lets you perform the addition in such a way that the weigh
 This avoids the stagnation problem (see [figure 4 of "Revisiting BFloat16 Training"](https://arxiv.org/abs/2010.06192)) without increasing the memory usage (as might happen if one were using a [compensated summation](https://github.com/nestordemeure/pairArithmetic) to solve the problem).
 
 The downside is that software-based stochastic arithmetic is significantly slower than a normal floating-point addition.
-It is thus viable for the weight update but would not be appropriate in a hot loop.
+It is thus viable for things like the weight update but would not be appropriate in a hot loop.
 
 ## Usage
 
-This repository gives you a `StochasticAdder` type. Once you initialize it with the floating point precision you will be using (this code should be valid for all floating-point types used in Pytorch) and, optionally, a seed (to ensure reproducibility), you can use its `add` or `add_biased` function to perform stochastic additions on Pytorch tensors:
+This repository introduces the `add` (`x+y`), `add_highprecision` and `addcdiv` (`x + epsilon*t1/t2`) operations.
+They act similarly to their PyTorch counterparts but round the result up or down randomly:
 
 ```python
 import torch
-from stochastorch import StochasticAdder
+import stochastorch
 
-# struct that encapsulates the addition logic
-dtype = torch.bfloat16
-adder = StochasticAdder(dtype)
-
-# numbers that will be added
+# problem definition
 size = 10
+dtype = torch.bfloat16
 x = torch.rand(size, dtype=dtype)
 y = torch.rand(size, dtype=dtype)
 
@@ -33,34 +31,45 @@ result_det = x + y
 print(f"deterministic addition: {result_det}")
 
 # stochastic addition
-result_sto = adder.add(x,y)
+result_sto = stochastorch.add(x,y)
 print(f"stochastic addition: {result_sto}")
 difference = result_det - result_sto
 print(f"difference: {difference}")
 
-# biased stochastic addition
-result_bia = adder.add_biased(x,y)
-print(f"biased stochastic addition: {result_bia}")
-difference = result_det - result_bia
+# stochastic addcdiv 
+# result = x + epsilon*t1/t2
+t1 = torch.rand(size, dtype=dtype)
+t2 = torch.rand(size, dtype=dtype)
+epsilon = -0.1
+result_det = torch.addcdiv(x, t1, t2, value=epsilon)
+print(f"deterministic addcdiv: {result_det}")
+
+# stochastic addcdiv
+result_sto = stochastorch.addcdiv(x, t1, t2, value=epsilon)
+print(f"stochastic addcdiv: {result_bia}")
+difference = result_det - result_sto
 print(f"difference: {difference}")
 ```
 
-`add_biased` flips the rounding mode with a probability proportional to the ratio of the error and the distance between the result and the alternative result.
-This makes the addition associative *on average*.
+Both functions take an optional `is_biased` boolean parameter.
+If is_biased is True, the random number generator is biased according to the relative error of the operation
+else, it will round up half of the time on average.
 
-`add` has a 50% probability of flipping the rounding mode.
-This is faster but, will change the weights more often.
+When using low precision (16 bits floating-point arithmetic or less), we *strongly* recommend using the `stochastorch.addcdiv` function when possible as it is significantly more accurate (note that Pytorch also [increase the precision locally to 32 bits](https://github.com/pytorch/pytorch/blob/12382f0a38f8199bc74aee701465e847f368e6de/aten/src/ATen/native/cuda/PointwiseOpsKernel.cu?fbclid=IwAR0SdS6mVAGN0TB_TAdKt0WVWWjxiBkmP6Inj9lYH8oB68wjsbQzinlH-xY#L92) when computing `addcdiv`).
+
+Otherwise, it is often beneficial to use higher precision locally *then* cast down to 16 bits at summing / storage time.
+`add` deals with it automatically when its second input is higher precision than the first.
 
 ## Implementation details
 
-We use `TwoSum` to measure the numerical error done by an addition, our tests show that it behaves as needed on `bfloat16` (some edge cases might be invalid, leading to an inexact computation of the numerical error but, it is reliable enough for our purpose).
-This and the `nextafter` function let us emulate various rounding modes in software (this is inspired by [Verrou's backend](https://github.com/edf-hpc/verrou)).
+We use `TwoSum` to measure the numerical error done by an addition, our tests show that it behaves as needed on `bfloat16` (some edge cases might be invalid, leading to an inexact computation of the numerical error but, it is reliable enough for our purpose) and higher floating-point precisions.
 
-The random number generation is done using a hashing function ([Dietzfelbinger's multiply shift hash function](https://arxiv.org/abs/1504.06804)) following [the ideas of Salmons](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf) as a way to avoid paying the price of a random number generator call while ensuring that our additions are deterministic (given the same seed and numbers, we will always round in the same direction).
+This and the [`nextafter`](https://pytorch.org/docs/stable/generated/torch.nextafter.html) function let us emulate various rounding modes in software (this is inspired by [Verrou's backend](https://github.com/edf-hpc/verrou)).
 
 ## Potential improvements:
 
-- One could reduce the memory usage of the operations by using more in-place operations,
+- one could implement more operations,
+- one could reduce the memory usage of the operations by using more in-place operations,
 - one could improve the performance of this code by implementing it as a C++/CUDA kernel.
 
 Do not hesitate to submit an issue or a pull request if you need added functionalities for your needs!
@@ -72,7 +81,7 @@ Please use this reference if you use Stochastorch within a published work:
 ```bibtex
 @misc{StochasTorch,
   author = {Nestor, Demeure},
-  title = {StochasTorch: a Pytorch implementation of stochastic addition},
+  title = {StochasTorch: stochastically rounded operations between Pytorch tensors.},
   year = {2022},
   publisher = {GitHub},
   journal = {GitHub repository},
